@@ -95,6 +95,8 @@ const toolingPaths = [
   "packages/plugin-package-contract/src/categories.ts",
   "packages/plugin-package-contract/src/index.ts",
   "scripts/full-release-publication-contract.mjs",
+  "scripts/full-release-flake-policy.mjs",
+  "scripts/full-release-flake-retry.mjs",
   "scripts/full-release-publication-admission.mts",
   "scripts/full-release-candidate-contract.mjs",
   "scripts/full-release-validation-state.mjs",
@@ -264,6 +266,7 @@ describe("publication dispatch transport", () => {
       const root = temps.make("openclaw-publication-transport-");
       for (const file of [
         "scripts/full-release-publication-contract.mjs",
+        "scripts/full-release-flake-policy.mjs",
         "scripts/clawhub-prepared-artifact.mjs",
         "scripts/clawhub-parent-authorization.mjs",
         "scripts/plugin-publication-artifact.mjs",
@@ -458,6 +461,7 @@ function fixture(
       | "platform-helper"
       | "platform-helper-object"
       | "worker-import"
+      | "flake-policy-import"
       | "worker-object"
       | "unselected";
   } = {},
@@ -813,6 +817,10 @@ globalThis.fetch = async (input, init = {}) => {
       readFileSync(join(tooling, "src/infra/clawhub-retry.ts"), "utf8") +
         "\n// changed worker import\n",
     );
+  }
+  if (options.fault === "flake-policy-import") {
+    const path = "scripts/full-release-flake-policy.mjs";
+    write(tooling, path, readFileSync(join(tooling, path), "utf8") + "\n// changed retry policy\n");
   }
   if (options.fault === "dirty-candidate") {
     write(target, "extensions/demo-plugin/package.json", "not JSON");
@@ -1736,7 +1744,13 @@ describe("FRV observation worker boundary", () => {
     expect(result.registryCalls.filter((entry) => entry.path === "/demo-runtime")).toHaveLength(1);
   }, 30_000);
 
-  it.each(["worker-object", "worker-import", "candidate-object", "yaml"] as const)(
+  it.each([
+    "worker-object",
+    "worker-import",
+    "flake-policy-import",
+    "candidate-object",
+    "yaml",
+  ] as const)(
     "rejects %s before any public read",
     (fault) => {
       const result = fixture({ registry: "healthy", fault });
