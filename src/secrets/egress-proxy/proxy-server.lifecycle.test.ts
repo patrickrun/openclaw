@@ -188,6 +188,73 @@ afterEach(async () => {
 });
 
 describe("secret egress registration lifecycle", () => {
+  it.each(["keep-alive", "close"])(
+    "rejects queued credentials after shared revocation before socket assignment (%s)",
+    async (connection) => {
+      const authority = new Int32Array(new SharedArrayBuffer(4));
+      grant = proxy.registerProcess(
+        [{ name: "SERVICE_API_KEY", sentinel, allowedHosts: ["localhost"] }],
+        () => Atomics.load(authority, 0) === 0,
+      );
+      const queued = createDeferredCore<{ request: http.ClientRequest; agent: https.Agent }>();
+      const { request: requestUpstream } = await vi.importActual<typeof https>("node:https");
+      vi.mocked(https.request).mockImplementation((...args) => {
+        const agent = (args[0] as https.RequestOptions).agent;
+        if (!(agent instanceof https.Agent)) {
+          throw new Error("Expected the grant's HTTPS agent");
+        }
+        agent.maxSockets = 1;
+        agent.maxTotalSockets = 1;
+        const request = requestUpstream(...args);
+        if (request.path === "/queued") {
+          queued.resolve({ request, agent });
+        }
+        return request;
+      });
+      const held = createDeferredCore<ServerResponse>();
+      const paths: string[] = [];
+      origin.removeAllListeners("request");
+      origin.on("request", (request, response) => {
+        paths.push(request.url!);
+        expect(request.headers.authorization).toBe(`Bearer ${value}`);
+        request.resume();
+        request.once("end", () => {
+          if (request.url === "/held") {
+            held.resolve(response);
+          } else {
+            response.end("ok");
+          }
+        });
+      });
+      const first = await openTlsTunnel();
+      first.write(
+        `GET /held HTTP/1.1\r\nHost: localhost:${originPort}\r\nConnection: ${connection}\r\nAuthorization: Bearer ${sentinel}\r\nContent-Length: 0\r\n\r\n`,
+      );
+      const heldResponse = await held.promise;
+      const second = await openTlsTunnel();
+      second.write(
+        `GET /queued HTTP/1.1\r\nHost: localhost:${originPort}\r\nAuthorization: Bearer ${sentinel}\r\nContent-Length: 0\r\n\r\n`,
+      );
+      const { request: pending, agent } = await queued.promise;
+      expect(pending.socket).toBeNull();
+      expect(pending.writableEnded).toBe(true);
+      const pendingClosed = new Promise<void>((resolve) => {
+        pending.once("close", resolve);
+      });
+      const secondClosed = onClose(second);
+      expect(Object.values(agent.requests).flat()).toContain(pending);
+      // Revoke after response guards finish, before Node dispatches the socket queue.
+      // The Worker cleanup message deliberately has not called grant.revoke().
+      agent.prependOnceListener("free", () => Atomics.store(authority, 0, 1));
+      heldResponse.end("ok");
+      await pendingClosed;
+      expect(paths).toEqual(["/held"]);
+      await secondClosed;
+      await sendCredential(await openTlsTunnel(register().env));
+      expect(paths).toEqual(["/held", "/"]);
+    },
+  );
+
   it("reuses upstream TLS only within a live grant and releases idle connections on revocation", async () => {
     const peers: Socket[] = [];
     origin.removeAllListeners("request");
