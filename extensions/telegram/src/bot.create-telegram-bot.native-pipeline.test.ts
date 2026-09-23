@@ -900,9 +900,14 @@ describe("createTelegramBot typed command pipeline", () => {
     let receiving: Promise<void> | undefined;
     try {
       const bot = createBot(false, true, cfg);
-      const receive = (update: Parameters<typeof bot.handleUpdate>[0]) => {
-        // Preserve Telegram's JSON shape while owning the complete handler lifetime.
-        return bot.handleUpdate(JSON.parse(JSON.stringify(update)));
+      const receive = async (update: Parameters<typeof bot.handleUpdate>[0]) => {
+        // Decode the wire shape while owning the complete handler lifetime.
+        const request = new Request("http://localhost/telegram", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(update),
+        });
+        return bot.handleUpdate(await request.json());
       };
       receiving = receive({ update_id: 2800, message });
       await Promise.race([

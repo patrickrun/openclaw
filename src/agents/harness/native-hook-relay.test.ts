@@ -2214,7 +2214,7 @@ describe("native hook relay registry", () => {
         expiresAtMs: Date.now() + 10_000,
       },
     });
-
+    vi.spyOn(Date, "now").mockReturnValue(Date.now());
     await expect(
       invokeNativeHookRelayBridge({
         provider: "codex",
