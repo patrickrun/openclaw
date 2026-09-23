@@ -3,9 +3,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import "../../../styles.css";
 import "../../../styles/chat.ts";
 import "../../../styles/chat/side-panel.css";
-import { readFileDraft } from "./chat-file-drafts.ts";
-import "./chat-sidebar.ts";
 import { readFileDraft, setFileDraft } from "./chat-file-drafts.ts";
+import "./chat-sidebar.ts";
 
 // The root jsdom ui shard also collects *.browser.test.ts files; CodeMirror
 // needs a real DOM, so this suite only runs in the checks-ui Chromium project.
