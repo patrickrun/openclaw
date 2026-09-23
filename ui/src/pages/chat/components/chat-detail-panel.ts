@@ -489,21 +489,20 @@ class ChatDetailPanel extends OpenClawLightDomElement {
     this.fileEditor?.setEditable(false);
   };
 
-  private updateSavedFile(content: FileSidebarContent, nextContent: string, hash: string) {
-    const draftContent = this.currentFileText();
-    this.fileSavedContent = nextContent;
+  private updateSavedFile(file: FileSidebarContent, text: string, hash: string, draft: string) {
+    this.fileSavedContent = text;
     this.fileHash = hash;
-    this.fileDirty = draftContent !== nextContent;
-    this.fileDraftContent = !this.fileEditor && this.fileDirty ? draftContent : null;
-    setFileDraft(content, this.fileDirty ? { content: draftContent, expectedHash: hash } : null);
+    this.fileDirty = draft !== text;
+    this.fileDraftContent = !this.fileEditor && this.fileDirty ? draft : null;
+    setFileDraft(file, this.fileDirty ? { content: draft, expectedHash: hash } : null);
     this.fileSaveNotice = null;
     // The retained file tab owns the saved buffer used by later reads and opens.
-    content.content = nextContent;
-    content.rawText = nextContent;
-    if (content.edit) {
-      content.edit.hash = hash;
+    file.content = text;
+    file.rawText = text;
+    if (file.edit) {
+      file.edit.hash = hash;
     }
-    this.visibleContent = content;
+    this.visibleContent = file;
   }
 
   private async saveFileContent(
@@ -520,7 +519,7 @@ class ChatDetailPanel extends OpenClawLightDomElement {
       return;
     }
     if (outcome.ok) {
-      this.updateSavedFile(this.visibleContent, nextContent, outcome.hash);
+      this.updateSavedFile(this.visibleContent, nextContent, outcome.hash, this.currentFileText());
     } else if (outcome.code === "conflict") {
       this.fileSaveNotice = { kind: "conflict" };
     } else {
@@ -583,7 +582,7 @@ class ChatDetailPanel extends OpenClawLightDomElement {
         this.fileEditor?.setContent(latest.content);
         this.fileDraftContent = this.fileEditor ? null : latest.content;
         this.htmlPreview.discard(latest.content);
-        this.updateSavedFile(this.visibleContent, latest.content, latest.hash);
+        this.updateSavedFile(this.visibleContent, latest.content, latest.hash, latest.content);
         // A reload can bring back content that no longer qualifies for edit
         // mode (e.g. the agent rewrote the file with mixed line endings);
         // drop the edit capability instead of letting a save corrupt it.
